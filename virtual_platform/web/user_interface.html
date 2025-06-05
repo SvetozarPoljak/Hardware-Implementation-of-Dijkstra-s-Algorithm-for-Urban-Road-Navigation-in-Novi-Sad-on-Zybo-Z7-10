@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Novi Sad</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <style>
+    #map { height: 500px; width: 100%; }
+    #loading { display: none; }
+    #exitBtn {
+      float: right;
+      margin-right: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Unesite polaznu lokaciju i željenu destinaciju</h2>
+
+  <input type="text" id="location1" placeholder="polazna lokacija">
+  <button id="searchBtn1">Pretraži</button>
+
+  <input type="text" id="location2" placeholder="željena destinacija">
+  <button id="searchBtn2">Pretraži</button>
+  <button id="reloadBtn" onclick="resetAll()">Resetuj unos</button>
+  
+  <button id="submitBtn" onclick="uploadCoordinates()" disabled>Kraj!</button>
+
+  <button id="exitBtn"onclick="exitSimulation()">Izlaz</button>
+
+  <div id="loading">Učitavam lokaciju...</div>
+  <div id="map"></div>
+  <p>Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</p>
+
+  <script>
+    // Define Novi Sad's bounds
+    const bounds = [
+      [45.2212565, 19.7639858], // South West corner
+      [45.3218960, 19.9316453]  // North East corner
+    ];
+
+    // Initialize the map
+    var map = L.map('map', {
+      center: [45.2551, 19.8452], 
+      zoom: 13, // Initial zoom level
+      minZoom: 13, // Prevent zooming out too far
+      maxZoom: 18 // Max zoom level, adjust according to needs
+    });
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // Constrain map to Novi Sad bounds
+    map.setMaxBounds(bounds);
+    map.on('drag', function () {
+      map.panInsideBounds(bounds);
+    });
+    let routeLine = null;
+    var marker1, marker2;
+    var markerCount = 0; // To track the number of markers placed
+
+    // Function to check if coordinates are within the bounds of Novi Sad
+    function isWithinBounds(latLng) {
+      return latLng.lat >= bounds[0][0] && latLng.lat <= bounds[1][0] &&
+             latLng.lng >= bounds[0][1] && latLng.lng <= bounds[1][1];
+    }
+
+    // Function to handle search and place marker
+    function searchLocation(inputId, markerId) {
+  var input = document.getElementById(inputId).value;
+  if (input && markerCount < 2) {
+    document.getElementById("loading").style.display = "block"; // Show loading indicator
+    
+    // Manually call the Nominatim API
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=rs`)
+      .then(response => response.json())
+      .then(results => {
+        document.getElementById("loading").style.display = "none"; // Hide loading indicator
+        
+        if (results.length > 0) {
+          var validResult = results.find(function(result) {
+            var latLng = { lat: parseFloat(result.lat), lng: parseFloat(result.lon) };
+            return isWithinBounds(latLng);
+          });
+
+          if (validResult) {
+            var latLng = { lat: parseFloat(validResult.lat), lng: parseFloat(validResult.lon) };
+
+            // Determine which marker to update
+            if (markerId === 'marker1') {
+              if (marker1) map.removeLayer(marker1);
+              marker1 = L.marker(latLng).addTo(map).bindPopup(input).openPopup();
+            } else if (markerId === 'marker2') {
+              if (marker2) map.removeLayer(marker2);
+              marker2 = L.marker(latLng).addTo(map).bindPopup(input).openPopup();
+            }
+
+            map.setView(latLng, 13);
+            markerCount++;
+
+            // Enable the "Kraj!" button only when both markers are placed
+            if (marker1 && marker2) {
+              document.getElementById('submitBtn').disabled = false;
+            }
+          } else {
+            alert("Lokacija nije unutar definisanih granica Novi Sada. Molimo Vas da ponovo unesete lokacije.");
+            resetInputsAndMarkers();
+          }
+        } else {
+          alert("Lokacija nije pronađena. Molimo proverite unos.");
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching data:', error);
+        document.getElementById("loading").style.display = "none";
+        alert("Greška prilikom pretrage. Molimo pokušajte ponovo.");
+      });
+  }
+}
+    // Helper function to reset input fields and markers
+    function resetInputsAndMarkers() {
+      document.getElementById('location1').value = '';
+      document.getElementById('location2').value = '';
+      markerCount = 0;
+
+      map.setView([45.2551, 19.8452], 13);
+      if (marker1) map.removeLayer(marker1);
+      if (marker2) map.removeLayer(marker2);
+      marker1 = null;
+      marker2 = null;
+    }
+
+    // Add event listeners to search buttons
+    document.getElementById('searchBtn1').addEventListener('click', function() {
+      searchLocation('location1', 'marker1');
+    });
+
+    document.getElementById('searchBtn2').addEventListener('click', function() {
+      searchLocation('location2', 'marker2');
+    });
+
+    // Function to upload coordinates
+    function uploadCoordinates() {
+      if (marker1 && marker2) {
+        var coords1 = marker1.getLatLng();
+        var coords2 = marker2.getLatLng();
+        
+        // Create input_file.txt with coordinates
+        var output = `${coords1.lat} ${coords1.lng}\n${coords2.lat} ${coords2.lng}`;
+
+        // After generating the files, upload the input_file.txt to the server
+        var formData = new FormData();
+        formData.append('inputFile', new Blob([output], { type: 'text/plain' }), 'input_file.txt');
+
+        fetch('/upload', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+          // Handle server response here
+          console.log('Server response:', data);
+          
+          // Add the route as a polyline to the map
+          if (data.route && data.route.length > 0) {
+            var routeCoordinates = data.route.map(point => [point.lat, point.lng]);
+
+            // Plot the route on the map
+            routeLine = L.polyline(routeCoordinates, { 
+  	        color: 'blue', 
+                weight: 8, 
+                //dashArray: '1, 20' // Prva vrednost je dužina crtice, druga je razmak
+            }).addTo(map);
+            map.fitBounds(routeLine.getBounds()); // Adjust map to fit the route
+            
+          }
+        })
+        .catch(error => {
+          console.error('Error uploading file:', error);
+        });
+      } else {
+        alert('Moraju se odabrati i pocetna lokacija i zeljena destinacija!');
+      }
+    }
+    function resetAll() {
+  // Clear input fields
+  document.getElementById('location1').value = '';
+  document.getElementById('location2').value = '';
+
+  // Remove markers from the map
+  if (marker1) {
+    map.removeLayer(marker1);
+    marker1 = null;
+  }
+  if (marker2) {
+    map.removeLayer(marker2);
+    marker2 = null;
+  }
+
+  // Remove the polyline if it exists
+  if (routeLine) {
+    map.removeLayer(routeLine);
+    routeLine = null;
+  }
+
+  // Reset internal state
+  markerCount = 0;
+
+  // Disable the "Kraj!" button
+  document.getElementById('submitBtn').disabled = true;
+
+  // Reset the map view
+  map.setView([45.2551, 19.8452], 13);
+
+  // Provide feedback to the user
+  alert("Unos je resetovan. Možete uneti nove lokacije.");
+
+  // Trigger backend C++ execution for fresh map (reset state)
+  fetch('/reset')
+    .then(response => response.text())
+    .then(message => {
+      console.log(message);
+    })
+    .catch(error => {
+      console.error('Error triggering reset:', error);
+      alert('Došlo je do greške prilikom resetovanja.');
+    });
+}
+
+  function exitSimulation() {
+    fetch('/exit')
+      .then(response => response.text())
+      .then(message => {
+        alert("Simulacija je završena. Možete zatvoriti ovaj tab.");
+      })
+      .catch(error => {
+        console.error('Greška prilikom izlaza:', error);
+        alert('Neuspešan pokušaj gašenja simulacije.');
+      });
+  }
+    
+  </script>
+
+</body>
+</html>
+
