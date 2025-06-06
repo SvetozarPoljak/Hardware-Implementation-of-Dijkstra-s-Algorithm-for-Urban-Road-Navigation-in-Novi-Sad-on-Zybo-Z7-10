@@ -28,18 +28,15 @@ bram_mem::bram_mem(sc_module_name name):
 	soc_ic.register_b_transport(this, &bram_mem::b_transport_ic);
 	
 	load_data_for_bram();
-	std::ofstream bram_file("bram_file.txt", std::ios::app);
 	//head, tail i weight su vrednosti koje opisuju graf Novog Sada i taj graf se nece menjati
 	for(int i = HEAD_AND_TAIL_BASE_ADDR; i != WEIGHT_BASE_ADDR; ++i)
 	{
 		bram[i] = (head[i] << 18) | (tail[i]);
-		bram_file << bram[i] << ",\n";
 	}
 	
 	for(int i = WEIGHT_BASE_ADDR; i != COST_AND_VISITED_VERTEX_BASE_ADDR; ++i)
 	{
 		bram[i] = edge_weights[i - WEIGHT_BASE_ADDR];
-		bram_file << bram[i] << ",\n";
 	}
 	
 	//cost i vertex_is_visited vrednosti su poznate tek kada se pronadju pocetno i krajnje teme trenutnog upita
