@@ -26,7 +26,7 @@ ddr3_ram::ddr3_ram(sc_module_name name):
 	load_data_for_ddr3();
 }
 
-//Modelovanje tlm komunikacije ka CPU modulu
+//Modelovanje tlm komunikacije
 void ddr3_ram::b_transport_ic(pl_t& pl, sc_time& offset)
 {
 	tlm_command cmd 	= pl.get_command();
